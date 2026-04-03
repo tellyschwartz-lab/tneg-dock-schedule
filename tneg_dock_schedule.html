@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TNEG Dock Schedule</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, sans-serif;
+    background: #0f1923;
+    color: #e8edf2;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #header {
+    background: #1B2A4A;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid #1E6CB8;
+    flex-shrink: 0;
+  }
+
+  #header-left { display: flex; align-items: center; gap: 16px; }
+
+  #header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+
+  #date-display {
+    font-size: 13px;
+    color: #D6E4F7;
+    background: rgba(30,108,184,0.3);
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid #1E6CB8;
+  }
+
+  #legend {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #b0c4d8;
+  }
+
+  .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+  .dot-inbound  { background: #1E6CB8; }
+  .dot-outbound { background: #2e9e62; }
+  .dot-cancelled { background: #8b2020; }
+
+  #last-updated { font-size: 11px; color: #7a9bbf; }
+
+  #status-bar {
+    height: 3px;
+    background: #1E6CB8;
+    width: 0%;
+    transition: width 0.4s;
+  }
+
+  #grid-outer {
+    flex: 1;
+    overflow: auto;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .col-time { width: 72px; }
+  .col-door { width: 150px; min-width: 120px; }
+
+  thead tr th {
+    background: #1B2A4A;
+    color: #D6E4F7;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    padding: 8px 6px;
+    border: 1px solid #253d5e;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap;
+  }
+
+  thead tr th.col-time {
+    text-align: left;
+    padding-left: 10px;
+    position: sticky;
+    left: 0;
+    z-index: 20;
+  }
+
+  tbody tr td {
+    border: 1px solid #1e2e3e;
+    vertical-align: top;
+    padding: 2px;
+    height: 38px;
+  }
+
+  td.time-label {
+    background: #1B2A4A;
+    color: #D6E4F7;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    border-right: 2px solid #1E6CB8;
+  }
+
+  tr.hour-mark td { border-top: 1.5px solid #2e4a68; }
+  tr.hour-mark td.time-label {
+    border-top: 1.5px solid #1E6CB8;
+    color: #fff;
+    font-size: 13px;
+  }
+
+  td.slot-empty { background: #141f2a; }
+
+  .appt {
+    border-radius: 3px;
+    padding: 3px 6px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .appt-inbound  { background: #0d3460; border-left: 3px solid #1E6CB8; }
+  .appt-outbound { background: #0d3020; border-left: 3px solid #2e9e62; }
+  .appt-cancelled { background: #2a1010; border-left: 3px solid #8b2020; opacity: 0.7; }
+
+  .appt-dir {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1px;
+  }
+
+  .dir-inbound  { color: #7ec8f5; }
+  .dir-outbound { color: #7edba0; }
+  .dir-cancelled { color: #e07070; }
+
+  .appt-carrier {
+    font-size: 11px;
+    font-weight: 600;
+    color: #e8edf2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .appt-partner {
+    font-size: 10px;
+    color: #8aafc8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: #0f1923;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #1e3050;
+    border-top-color: #1E6CB8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 14px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: #7a9bbf; font-size: 14px; }
+
+  #error-msg {
+    display: none;
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #3a1010;
+    border: 1px solid #8b2020;
+    color: #f5a0a0;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading today's schedule…</p>
+</div>
+
+<div id="error-msg"></div>
+
+<div id="header">
+  <div id="header-left">
+    <h1>TNEG Dock Schedule</h1>
+    <div id="date-display">—</div>
+  </div>
+  <div id="legend">
+    <div class="legend-item"><div class="legend-dot dot-inbound"></div>Inbound</div>
+    <div class="legend-item"><div class="legend-dot dot-outbound"></div>Outbound</div>
+    <div class="legend-item"><div class="legend-dot dot-cancelled"></div>Cancelled</div>
+  </div>
+  <div id="last-updated">—</div>
+</div>
+<div id="status-bar"></div>
+
+<div id="grid-outer">
+  <table id="schedule-table">
+    <thead id="table-head"></thead>
+    <tbody id="table-body"></tbody>
+  </table>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────
+const SHEET_ID     = "1eZvGNNhhywAI-zlx8uJcI2IfThvf7txndT5q8FIbdrI";
+const REFRESH_MS   = 60000;
+
+const DOORS = [
+  "Door 1","Door 2","Door 3","Door 4","Door 5","Door 6",
+  "Door 7","Door 8","Door 9","Door 10","Door 11","Door 12"
+];
+
+const SLOTS = [
+  {id:1,  text:"08:00"},{id:2,  text:"08:15"},{id:3,  text:"08:30"},{id:4,  text:"08:45"},
+  {id:5,  text:"09:00"},{id:6,  text:"09:15"},{id:7,  text:"09:30"},{id:8,  text:"09:45"},
+  {id:9,  text:"10:00"},{id:10, text:"10:15"},{id:11, text:"10:30"},{id:12, text:"10:45"},
+  {id:13, text:"11:00"},{id:14, text:"11:15"},{id:15, text:"11:30"},{id:16, text:"11:45"},
+  {id:17, text:"12:00"},{id:18, text:"12:15"},{id:19, text:"12:30"},{id:20, text:"12:45"},
+  {id:21, text:"13:00"},{id:22, text:"13:15"},{id:23, text:"13:30"},{id:24, text:"13:45"},
+  {id:25, text:"14:00"},{id:26, text:"14:15"},{id:27, text:"14:30"},{id:28, text:"14:45"},
+  {id:29, text:"15:00"},{id:30, text:"15:15"},{id:31, text:"15:30"},{id:32, text:"15:45"},
+  {id:33, text:"16:00"}
+];
+
+// ── HELPERS ─────────────────────────────────────
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function formatDateNice(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-US", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+}
+
+function now12h() {
+  return new Date().toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
+}
+
+// Parse a Google Sheets serial date number OR date string to YYYY-MM-DD
+function parseSheetDate(val) {
+  if (!val) return null;
+  // Already a string like "2026-04-01"
+  if (typeof val === "string" && val.match(/^\d{4}-\d{2}-\d{2}/)) return val.substring(0,10);
+  // Google Sheets serial number (days since Dec 30 1899)
+  if (typeof val === "number") {
+    const d = new Date((val - 25569) * 86400000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
+  }
+  // Try direct parse
+  const d = new Date(val);
+  if (!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  return null;
+}
+
+// ── FETCH FROM GOOGLE SHEETS CSV ─────────────────
+async function fetchAppointments(dateStr) {
+  // Use the CSV export endpoint — works with "Anyone with link can view"
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Appointments`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Sheet fetch failed: ${resp.status}`);
+  const csv  = await resp.text();
+  const rows = parseCSV(csv);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(h => h.trim());
+  const idx = h => headers.indexOf(h);
+
+  const iDir    = idx("Inbound / Outbound");
+  const iDate   = idx("Scheduled Date");
+  const iDoor   = idx("Door");
+  const iCarrier= idx("Carrier");
+  const iPartner= idx("Partner");
+  const iStatus = idx("Status");
+  const iStart  = idx("StartTimeSlot");
+  const iEnd    = idx("EndTimeSlot");
+  const iStartT = idx("StartTime");   // fallback
+  const iEndT   = idx("EndTime");     // fallback
+
+  return rows.slice(1).filter(row => {
+    const d = parseSheetDate(row[iDate]);
+    return d === dateStr;
+  }).map(row => ({
+    direction : row[iDir]    || "",
+    door      : row[iDoor]   || "",
+    carrier   : row[iCarrier]|| "",
+    partner   : row[iPartner]|| "",
+    status    : row[iStatus] || "",
+    startSlot : parseInt(row[iStart]) || 0,
+    endSlot   : parseInt(row[iEnd])   || 0,
+    startTime : row[iStartT] || "",
+    endTime   : row[iEndT]   || "",
+  }));
+}
+
+// ── MINIMAL CSV PARSER ───────────────────────────
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cur = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { cur += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else {
+      if (c === '"') { inQ = true; }
+      else if (c === ',') { row.push(cur); cur = ""; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else if (c === '\r') {}
+      else cur += c;
+    }
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
+// Convert HH:MM:SS time string to slot ID (08:00 = 1, 08:15 = 2, etc.)
+function timeToSlotId(timeStr) {
+  if (!timeStr) return 0;
+  const val = String(timeStr).trim();
+
+  // Google Sheets exports time as decimal fraction of a day e.g. 0.3333 = 8:00 AM
+  if (!isNaN(val) && val.includes(".")) {
+    const totalMins = Math.round(parseFloat(val) * 24 * 60);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    const minsFrom8 = (h - 8) * 60 + m;
+    return Math.max(1, Math.floor(minsFrom8 / 15) + 1);
+  }
+
+  // Handle "8:00:00", "08:00", "8:00 AM" text formats
+  const cleaned = val.replace(/\s*(AM|PM)/i, "");
+  const parts = cleaned.split(":");
+  let h = parseInt(parts[0]);
+  const m = parseInt(parts[1]) || 0;
+  if (/PM/i.test(val) && h < 12) h += 12;
+  if (/AM/i.test(val) && h === 12) h = 0;
+  const minsFrom8 = (h - 8) * 60 + m;
+  return Math.max(1, Math.floor(minsFrom8 / 15) + 1);
+}
+
+// ── BUILD GRID SHELL ─────────────────────────────
+function buildGridShell() {
+  const thead = document.getElementById("table-head");
+  const tbody = document.getElementById("table-body");
+
+  const htr = document.createElement("tr");
+  const thTime = document.createElement("th");
+  thTime.className = "col-time";
+  thTime.textContent = "Time";
+  htr.appendChild(thTime);
+  DOORS.forEach(d => {
+    const th = document.createElement("th");
+    th.className = "col-door";
+    th.textContent = d;
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+
+  SLOTS.forEach(slot => {
+    const tr = document.createElement("tr");
+    tr.id = `row-${slot.id}`;
+    if (slot.text.endsWith(":00")) tr.classList.add("hour-mark");
+
+    const tdTime = document.createElement("td");
+    tdTime.className = "time-label";
+    tdTime.textContent = slot.text;
+    tr.appendChild(tdTime);
+
+    DOORS.forEach(door => {
+      const td = document.createElement("td");
+      td.id = `cell-${slot.id}-${door.replace(/\s/g,"")}`;
+      td.className = "slot-empty";
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+// ── CLEAR GRID ───────────────────────────────────
+function clearGrid() {
+  document.querySelectorAll("td[id^='cell-']").forEach(td => {
+    td.className = "slot-empty";
+    td.innerHTML = "";
+    td.style.background = "";
+    td.style.borderLeft = "";
+    td.style.padding = "2px";
+  });
+}
+
+// ── RENDER ───────────────────────────────────────
+function renderAppointments(appointments) {
+  clearGrid();
+  const painted = new Set();
+
+  appointments.forEach(appt => {
+    let startSlot = appt.startSlot;
+    let endSlot   = appt.endSlot;
+
+    // Fallback: derive slot from StartTime/EndTime text if SlotId not set
+    if (!startSlot && appt.startTime) startSlot = timeToSlotId(appt.startTime);
+    if (!endSlot   && appt.endTime)   endSlot   = timeToSlotId(appt.endTime);
+    if (!startSlot) return;
+    if (!endSlot || endSlot <= startSlot) endSlot = startSlot + 1;
+
+    const door      = appt.door;
+    const direction = appt.direction.trim();
+    const cancelled = appt.status.toLowerCase().includes("cancel");
+    const doorKey   = door.replace(/\s/g, "");
+    const spans     = Math.max(1, endSlot - startSlot);
+
+    for (let s = startSlot; s < startSlot + spans && s <= 33; s++) {
+      const cellId = `cell-${s}-${doorKey}`;
+      if (painted.has(cellId)) continue;
+      painted.add(cellId);
+      const td = document.getElementById(cellId);
+      if (!td) continue;
+
+      td.className = "slot-filled";
+      td.style.padding = "2px";
+
+      if (s === startSlot) {
+        const isIn = direction === "Inbound";
+        const blockCls = cancelled ? "appt appt-cancelled" : (isIn ? "appt appt-inbound" : "appt appt-outbound");
+        const dirCls   = cancelled ? "dir-cancelled" : (isIn ? "dir-inbound" : "dir-outbound");
+        const dirLabel = cancelled ? "Cancelled" : direction;
+
+        td.innerHTML = `
+          <div class="${blockCls}">
+            <div class="appt-dir ${dirCls}">${dirLabel}</div>
+            <div class="appt-carrier">${appt.carrier || "—"}</div>
+            ${appt.partner ? `<div class="appt-partner">${appt.partner}</div>` : ""}
+          </div>`;
+      } else {
+        const bg    = cancelled ? "#1a0808" : (direction === "Inbound" ? "#0a2040" : "#0a2016");
+        const bord  = cancelled ? "#8b2020" : (direction === "Inbound" ? "#1E6CB8" : "#2e9e62");
+        td.style.background  = bg;
+        td.style.borderLeft  = `3px solid ${bord}`;
+        td.style.padding     = "0";
+      }
+    }
+  });
+}
+
+// ── MAIN LOAD ────────────────────────────────────
+async function load() {
+  const bar = document.getElementById("status-bar");
+  bar.style.width = "50%";
+
+  const dateStr = todayISO();
+  document.getElementById("date-display").textContent = formatDateNice(dateStr);
+
+  try {
+    const appts = await fetchAppointments(dateStr);
+    renderAppointments(appts);
+    document.getElementById("last-updated").textContent = `Updated ${now12h()} · ${appts.length} appointment${appts.length !== 1 ? "s" : ""} today`;
+    document.getElementById("error-msg").style.display = "none";
+  } catch(e) {
+    const em = document.getElementById("error-msg");
+    em.textContent = `Could not load schedule: ${e.message}`;
+    em.style.display = "block";
+    console.error(e);
+  }
+
+  bar.style.width = "100%";
+  setTimeout(() => { bar.style.width = "0%"; }, 600);
+  document.getElementById("loading").style.display = "none";
+}
+
+// ── INIT ─────────────────────────────────────────
+buildGridShell();
+load();
+setInterval(load, REFRESH_MS);
+</script>
+</body>
+</html>
